@@ -1,8 +1,10 @@
+
 import { useState } from 'react'
 import { supabase } from './lib/supabase'
 import './Auth.css'
 
 export default function Auth({ onLogin }) {
+  const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isSignup, setIsSignup] = useState(true)
@@ -20,16 +22,20 @@ export default function Auth({ onLogin }) {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
+          options: {
+            data: {
+              display_name: fullName.trim(),
+            },
+          },
         })
 
         if (error) throw error
 
         setMessage(
           data.session
-            ? 'Account created successfully! You can continue.'
-            : 'Account created! Check your email to confirm your account, then log in.'
+            ? 'Account created successfully!'
+            : 'Account created! Check your email to confirm, then sign in.'
         )
-
         setIsSignup(false)
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -69,6 +75,22 @@ export default function Auth({ onLogin }) {
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
+          {isSignup && (
+            <>
+              <label htmlFor="auth-name">Full name</label>
+              <input
+                id="auth-name"
+                type="text"
+                placeholder="Enter your full name"
+                value={fullName}
+                onChange={e => setFullName(e.target.value)}
+                autoComplete="name"
+                maxLength={80}
+                required
+              />
+            </>
+          )}
+
           <label htmlFor="auth-email">Email address</label>
           <input
             id="auth-email"
@@ -135,9 +157,7 @@ export default function Auth({ onLogin }) {
         </p>
       </section>
 
-      <p className="auth-footer">
-        SAFE ROUTES. SMARTER JOURNEYS.
-      </p>
+      <p className="auth-footer">SAFE ROUTES. SMARTER JOURNEYS.</p>
     </main>
   )
 }

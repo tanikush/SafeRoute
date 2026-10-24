@@ -1,21 +1,21 @@
-
 import { useEffect, useState } from 'react'
 import './App.css'
 import Auth from './Auth'
 import { supabase } from './lib/supabase'
+import TrustedContacts from './components/TrustedContacts'
 
 function App() {
   const [dark, setDark] = useState(false)
   const [language, setLanguage] = useState('en')
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
+  const [sosLoading, setSosLoading] = useState(false)
 
   useEffect(() => {
     let mounted = true
 
     supabase.auth.getSession().then(({ data, error }) => {
       if (!mounted) return
-
       if (error) console.error(error.message)
       setUser(data.session?.user ?? null)
       setAuthLoading(false)
@@ -176,9 +176,108 @@ function App() {
 
   const t = text[language] || text.en
 
-  const showDemo = (feature) => {
+  function showDemo(feature) {
     alert(`${feature}\n\nThis feature is not connected yet.`)
   }
+
+
+async function handleSOS() {
+  if (sosLoading) return
+
+  const confirmed = window.confirm(
+    'SOS Emergency\n\nGet your location and prepare an alert for a trusted contact?'
+  )
+
+  if (!confirmed) return
+
+  if (!navigator.geolocation) {
+    alert('Location unavailable. In India, call 112 in an emergency.')
+    return
+  }
+
+  setSosLoading(true)
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      try {
+        const { latitude, longitude, accuracy } = position.coords
+        console.log('SafeRoute location:', {
+  latitude,
+  longitude,
+  accuracy,
+})
+        if (accuracy > 1000) {
+  alert(
+    `Location accurate nahi hai (${Math.round(accuracy)} metres). Please enable location services or try on your phone.`
+  )
+  setSosLoading(false)
+  return
+}
+        const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`
+
+        const { data: { user } } = await supabase.auth.getUser()
+
+        if (!user) {
+          alert('Please log in again.')
+          return
+        }
+
+        const { data: contacts, error } = await supabase
+          .from('trusted_contacts')
+          .select('name, phone')
+          .eq('user_id', user.id)
+
+        if (error) throw error
+
+        if (!contacts || contacts.length === 0) {
+          alert('Please add a trusted contact first.')
+          return
+        }
+
+        const message =
+          `SOS — I may need help!\n` +
+          `My location: ${mapLink}\n` +
+          `Accuracy: approximately ${Math.round(accuracy)} metres.\n` +
+          `Please contact me and check that I am safe.`
+
+        const share = window.confirm(
+          `Location obtained.\n\nTrusted contacts:\n` +
+          contacts.map(c => `${c.name}: ${c.phone}`).join('\n') +
+          `\n\nOpen sharing options? No message has been sent yet.`
+        )
+
+        if (!share) return
+
+        
+const contact = contacts[0]
+const phone = contact.phone.replace(/\D/g, '')
+
+const whatsappUrl =
+  `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+
+window.location.href = whatsappUrl
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          alert(`SOS error: ${error.message}`)
+        }
+      } finally {
+        setSosLoading(false)
+      }
+    },
+    (error) => {
+      setSosLoading(false)
+      alert(
+        `Could not get location: ${error.message}\nIf you are in immediate danger in India, call 112.`
+      )
+    },
+    {
+      enableHighAccuracy: true,
+      timeout: 60000,
+      maximumAge: 10000,
+    }
+  )
+}
+
 
   async function handleLogout() {
     const { error } = await supabase.auth.signOut()
@@ -193,6 +292,7 @@ function App() {
     return <Auth onLogin={setUser} />
   }
 
+  
   return (
     <main className={dark ? 'app dark' : 'app'}>
       <header className="topbar">
@@ -202,6 +302,7 @@ function App() {
           <label className="sr-only" htmlFor="language">
             {t.language}
           </label>
+
           <select
             id="language"
             value={language}
@@ -226,71 +327,79 @@ function App() {
         </div>
       </header>
 
-      <section className="hero">
-        <p className="eyebrow">YOUR PERSONAL SAFETY APP</p>
-        <h1>{t.subtitle}</h1>
-        <p className="intro">{t.intro}</p>
+      <div className="dashboard-layout">
+        <div className="dashboard-main">
+          <section className="hero">
+            <p className="eyebrow">YOUR PERSONAL SAFETY APP</p>
+            <h1>{t.subtitle}</h1>
+            <p className="intro">{t.intro}</p>
 
-        <button
-          className="sos"
-          onClick={() =>
-            alert(
-              'Demo only. No alert or location is shared.\n\nIf you are in immediate danger in India, call 112.'
-            )
-          }
-        >
-          🆘 {t.sos}
-        </button>
+            <button
+              className="sos"
+              onClick={handleSOS}
+              disabled={sosLoading}
+            >
+              {sosLoading ? 'Getting location...' : `🆘 ${t.sos}`}
+            </button>
 
-        <p className="notice">{t.sosNote}</p>
-        <p className="demo-note">{t.demo}</p>
-      </section>
+            <p className="notice">{t.sosNote}</p>
+            <p className="demo-note">
+              SOS prepares a location-sharing message. It does not
+              automatically send SMS or contact emergency services.
+            </p>
+          </section>
 
-      <section className="cards">
-        <article className="feature route-card">
-          <span className="feature-icon">🧭</span>
-          <h3>{t.route}</h3>
-          <p>{t.routeDesc}</p>
-          <button onClick={() => showDemo(t.route)}>
-            {t.routeBtn} →
-          </button>
-        </article>
+          <section className="cards">
+            <article className="feature route-card">
+              <span className="feature-icon">🧭</span>
+              <h3>{t.route}</h3>
+              <p>{t.routeDesc}</p>
+              <button onClick={() => showDemo(t.route)}>
+                {t.routeBtn} →
+              </button>
+            </article>
 
-        <article className="feature help-card">
-          <span className="feature-icon">🤝</span>
-          <h3>{t.help}</h3>
-          <p>{t.helpDesc}</p>
-          <button
-            onClick={() =>
-              window.open(
-                'https://112.gov.in/',
-                '_blank',
-                'noopener,noreferrer'
-              )
-            }
-          >
-            {t.helpBtn} →
-          </button>
-        </article>
+            <article className="feature help-card">
+              <span className="feature-icon">🤝</span>
+              <h3>{t.help}</h3>
+              <p>{t.helpDesc}</p>
+              <button
+                onClick={() =>
+                  window.open(
+                    'https://112.gov.in/',
+                    '_blank',
+                    'noopener,noreferrer'
+                  )
+                }
+              >
+                {t.helpBtn} →
+              </button>
+            </article>
 
-        <article className="feature journey-card">
-          <span className="feature-icon">📍</span>
-          <h3>{t.journey}</h3>
-          <p>{t.journeyDesc}</p>
-          <button onClick={() => showDemo(t.journey)}>
-            {t.journeyBtn} →
-          </button>
-        </article>
+            <article className="feature journey-card">
+              <span className="feature-icon">📍</span>
+              <h3>{t.journey}</h3>
+              <p>{t.journeyDesc}</p>
+              <button onClick={() => showDemo(t.journey)}>
+                {t.journeyBtn} →
+              </button>
+            </article>
 
-        <article className="feature report-card">
-          <span className="feature-icon">📝</span>
-          <h3>{t.report}</h3>
-          <p>{t.reportDesc}</p>
-          <button onClick={() => showDemo(t.report)}>
-            {t.reportBtn} →
-          </button>
-        </article>
-      </section>
+            <article className="feature report-card">
+              <span className="feature-icon">📝</span>
+              <h3>{t.report}</h3>
+              <p>{t.reportDesc}</p>
+              <button onClick={() => showDemo(t.report)}>
+                {t.reportBtn} →
+              </button>
+            </article>
+          </section>
+        </div>
+
+        <aside className="dashboard-sidebar">
+          <TrustedContacts />
+        </aside>
+      </div>
 
       <footer>
         <strong>SafeRoute</strong> • {t.footer}
