@@ -1,4 +1,3 @@
-
 import { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
@@ -6,6 +5,7 @@ export default function TrustedContacts() {
   const [contacts, setContacts] = useState([]);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [relationship, setRelationship] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -16,8 +16,10 @@ export default function TrustedContacts() {
     setLoading(true);
     setError('');
 
-    const { data: { user }, error: userError } =
-      await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
     if (userError || !user) {
       setError('Please log in first.');
@@ -51,16 +53,24 @@ export default function TrustedContacts() {
 
     const cleanName = name.trim();
     const cleanPhone = phone.trim();
+    const cleanEmail = email.trim().toLowerCase();
 
     if (!cleanName || !cleanPhone) {
       setError('Name and phone number are required.');
       return;
     }
 
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     setSaving(true);
 
-    const { data: { user }, error: userError } =
-      await supabase.auth.getUser();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
     if (userError || !user) {
       setError('Please log in again.');
@@ -74,6 +84,7 @@ export default function TrustedContacts() {
         user_id: user.id,
         name: cleanName,
         phone: cleanPhone,
+        email: cleanEmail || null,
         relationship: relationship.trim() || null,
       })
       .select()
@@ -85,6 +96,7 @@ export default function TrustedContacts() {
       setContacts(previous => [data, ...previous]);
       setName('');
       setPhone('');
+      setEmail('');
       setRelationship('');
       setMessage('Contact saved successfully!');
     }
@@ -120,7 +132,7 @@ export default function TrustedContacts() {
   return (
     <section className="trusted-contacts">
       <h2>Trusted Contacts</h2>
-      <p>Add people you trust for emergency alerts.</p>
+      <p>Add people you trust for emergency and journey alerts.</p>
 
       <form onSubmit={addContact}>
         <label>
@@ -147,12 +159,21 @@ export default function TrustedContacts() {
         </label>
 
         <label>
+          Email address (optional)
+          <input
+            type="email"
+            value={email}
+            onChange={event => setEmail(event.target.value)}
+            placeholder="contact@example.com"
+            maxLength={254}
+          />
+        </label>
+
+        <label>
           Relationship (optional)
           <input
             value={relationship}
-            onChange={event =>
-              setRelationship(event.target.value)
-            }
+            onChange={event => setRelationship(event.target.value)}
             placeholder="Friend, family..."
             maxLength={50}
           />
@@ -178,9 +199,13 @@ export default function TrustedContacts() {
             <li key={contact.id}>
               <strong>{contact.name}</strong>
               <p>{contact.phone}</p>
+
+              {contact.email && <p>{contact.email}</p>}
+
               {contact.relationship && (
                 <p>{contact.relationship}</p>
               )}
+
               <button
                 type="button"
                 onClick={() => deleteContact(contact.id)}

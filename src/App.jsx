@@ -1,8 +1,11 @@
+
 import { useEffect, useState } from 'react'
 import './App.css'
 import Auth from './Auth'
 import { supabase } from './lib/supabase'
 import TrustedContacts from './components/TrustedContacts'
+import JourneySharing from './components/JourneySharing'
+import SharedJourney from './components/SharedJourney'
 
 function App() {
   const [dark, setDark] = useState(false)
@@ -10,8 +13,18 @@ function App() {
   const [user, setUser] = useState(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [sosLoading, setSosLoading] = useState(false)
+  const [showJourney, setShowJourney] = useState(false)
+
+  const isSharedJourney =
+    window.location.pathname.startsWith('/shared-journey/')
 
   useEffect(() => {
+    // Public journey links do not require login.
+    if (isSharedJourney) {
+      setAuthLoading(false)
+      return
+    }
+
     let mounted = true
 
     supabase.auth.getSession().then(({ data, error }) => {
@@ -31,7 +44,7 @@ function App() {
       mounted = false
       subscription.unsubscribe()
     }
-  }, [])
+  }, [isSharedJourney])
 
   const text = {
     en: {
@@ -52,7 +65,6 @@ function App() {
       reportDesc: 'Report a dark street or blocked path.',
       reportBtn: 'Report Problem',
       footer: 'Safety information cannot guarantee your safety.',
-      demo: 'Demo only. No alert or location is shared.',
       language: 'Language',
       dark: '🌙 Dark',
       light: '☀️ Light',
@@ -75,7 +87,6 @@ function App() {
       reportDesc: 'अंधेरी सड़क या बंद रास्ते की जानकारी दें।',
       reportBtn: 'समस्या बताएं',
       footer: 'सुरक्षा की जानकारी सुरक्षित होने की गारंटी नहीं है।',
-      demo: 'यह डेमो है। कोई अलर्ट या लोकेशन शेयर नहीं होती।',
       language: 'भाषा',
       dark: '🌙 डार्क',
       light: '☀️ लाइट',
@@ -98,7 +109,6 @@ function App() {
       reportDesc: 'Informa sobre calles oscuras o caminos bloqueados.',
       reportBtn: 'Informar',
       footer: 'La información no garantiza tu seguridad.',
-      demo: 'Solo demostración. No se envían alertas ni ubicación.',
       language: 'Idioma',
       dark: '🌙 Oscuro',
       light: '☀️ Claro',
@@ -121,7 +131,6 @@ function App() {
       reportDesc: 'Signalez une rue sombre ou un chemin bloqué.',
       reportBtn: 'Signaler',
       footer: 'Ces informations ne garantissent pas votre sécurité.',
-      demo: 'Démo uniquement. Aucune alerte ni position partagée.',
       language: 'Langue',
       dark: '🌙 Sombre',
       light: '☀️ Clair',
@@ -144,7 +153,6 @@ function App() {
       reportDesc: 'أبلغ عن شارع مظلم أو طريق مغلق.',
       reportBtn: 'إبلاغ',
       footer: 'المعلومات لا تضمن سلامتك.',
-      demo: 'نسخة تجريبية. لا يتم إرسال تنبيه أو مشاركة الموقع.',
       language: 'اللغة',
       dark: '🌙 داكن',
       light: '☀️ فاتح',
@@ -167,7 +175,6 @@ function App() {
       reportDesc: '报告路灯损坏或道路堵塞。',
       reportBtn: '报告问题',
       footer: '安全信息不代表安全保证。',
-      demo: '仅供演示，不会发送警报或分享位置。',
       language: '语言',
       dark: '🌙 深色',
       light: '☀️ 浅色',
@@ -180,108 +187,109 @@ function App() {
     alert(`${feature}\n\nThis feature is not connected yet.`)
   }
 
+  async function handleSOS() {
+    if (sosLoading) return
 
-async function handleSOS() {
-  if (sosLoading) return
+    const confirmed = window.confirm(
+      'SOS Emergency\n\nGet your location and prepare an alert for a trusted contact?'
+    )
 
-  const confirmed = window.confirm(
-    'SOS Emergency\n\nGet your location and prepare an alert for a trusted contact?'
-  )
+    if (!confirmed) return
 
-  if (!confirmed) return
-
-  if (!navigator.geolocation) {
-    alert('Location unavailable. In India, call 112 in an emergency.')
-    return
-  }
-
-  setSosLoading(true)
-
-  navigator.geolocation.getCurrentPosition(
-    async (position) => {
-      try {
-        const { latitude, longitude, accuracy } = position.coords
-        console.log('SafeRoute location:', {
-  latitude,
-  longitude,
-  accuracy,
-})
-        if (accuracy > 1000) {
-  alert(
-    `Location accurate nahi hai (${Math.round(accuracy)} metres). Please enable location services or try on your phone.`
-  )
-  setSosLoading(false)
-  return
-}
-        const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`
-
-        const { data: { user } } = await supabase.auth.getUser()
-
-        if (!user) {
-          alert('Please log in again.')
-          return
-        }
-
-        const { data: contacts, error } = await supabase
-          .from('trusted_contacts')
-          .select('name, phone')
-          .eq('user_id', user.id)
-
-        if (error) throw error
-
-        if (!contacts || contacts.length === 0) {
-          alert('Please add a trusted contact first.')
-          return
-        }
-
-        const message =
-          `SOS — I may need help!\n` +
-          `My location: ${mapLink}\n` +
-          `Accuracy: approximately ${Math.round(accuracy)} metres.\n` +
-          `Please contact me and check that I am safe.`
-
-        const share = window.confirm(
-          `Location obtained.\n\nTrusted contacts:\n` +
-          contacts.map(c => `${c.name}: ${c.phone}`).join('\n') +
-          `\n\nOpen sharing options? No message has been sent yet.`
-        )
-
-        if (!share) return
-
-        
-const contact = contacts[0]
-const phone = contact.phone.replace(/\D/g, '')
-
-const whatsappUrl =
-  `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
-
-window.location.href = whatsappUrl
-      } catch (error) {
-        if (error.name !== 'AbortError') {
-          alert(`SOS error: ${error.message}`)
-        }
-      } finally {
-        setSosLoading(false)
-      }
-    },
-    (error) => {
-      setSosLoading(false)
-      alert(
-        `Could not get location: ${error.message}\nIf you are in immediate danger in India, call 112.`
-      )
-    },
-    {
-      enableHighAccuracy: true,
-      timeout: 60000,
-      maximumAge: 10000,
+    if (!navigator.geolocation) {
+      alert('Location unavailable. In India, call 112 in an emergency.')
+      return
     }
-  )
-}
 
+    setSosLoading(true)
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude, accuracy } = position.coords
+
+          console.log('SafeRoute location:', {
+            latitude,
+            longitude,
+            accuracy,
+          })
+
+          if (accuracy > 1000) {
+            alert(
+              `Location accurate nahi hai (${Math.round(accuracy)} metres). Please enable location services or try on your phone.`
+            )
+            return
+          }
+
+          const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`
+
+          const { data: { user } } = await supabase.auth.getUser()
+
+          if (!user) {
+            alert('Please log in again.')
+            return
+          }
+
+          const { data: contacts, error } = await supabase
+            .from('trusted_contacts')
+            .select('name, phone')
+            .eq('user_id', user.id)
+
+          if (error) throw error
+
+          if (!contacts || contacts.length === 0) {
+            alert('Please add a trusted contact first.')
+            return
+          }
+
+          const message =
+            `SOS — I may need help!\n` +
+            `My location: ${mapLink}\n` +
+            `Accuracy: approximately ${Math.round(accuracy)} metres.\n` +
+            `Please contact me and check that I am safe.`
+
+          const share = window.confirm(
+            `Location obtained.\n\nTrusted contacts:\n` +
+            contacts.map(c => `${c.name}: ${c.phone}`).join('\n') +
+            `\n\nOpen sharing options? No message has been sent yet.`
+          )
+
+          if (!share) return
+
+          const contact = contacts[0]
+          const phone = contact.phone.replace(/\D/g, '')
+          const whatsappUrl =
+            `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+
+          window.location.href = whatsappUrl
+        } catch (error) {
+          alert(`SOS error: ${error.message}`)
+        } finally {
+          setSosLoading(false)
+        }
+      },
+      (error) => {
+        alert(
+          `Could not get location: ${error.message}\nIf you are in immediate danger in India, call 112.`
+        )
+        setSosLoading(false)
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 60000,
+        maximumAge: 10000,
+      }
+    )
+  }
 
   async function handleLogout() {
     const { error } = await supabase.auth.signOut()
     if (error) alert(error.message)
+  }
+
+  // Public shared journey page: no login required.
+  if (isSharedJourney) {
+    return <SharedJourney />
   }
 
   if (authLoading) {
@@ -292,7 +300,6 @@ window.location.href = whatsappUrl
     return <Auth onLogin={setUser} />
   }
 
-  
   return (
     <main className={dark ? 'app dark' : 'app'}>
       <header className="topbar">
@@ -380,7 +387,7 @@ window.location.href = whatsappUrl
               <span className="feature-icon">📍</span>
               <h3>{t.journey}</h3>
               <p>{t.journeyDesc}</p>
-              <button onClick={() => showDemo(t.journey)}>
+              <button onClick={() => setShowJourney(true)}>
                 {t.journeyBtn} →
               </button>
             </article>
@@ -394,6 +401,19 @@ window.location.href = whatsappUrl
               </button>
             </article>
           </section>
+
+          {showJourney && (
+            <section className="journey-container">
+              <button
+                type="button"
+                className="journey-close"
+                onClick={() => setShowJourney(false)}
+              >
+                ✕ Close
+              </button>
+              <JourneySharing />
+            </section>
+          )}
         </div>
 
         <aside className="dashboard-sidebar">
