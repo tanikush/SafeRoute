@@ -14,12 +14,13 @@ function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [sosLoading, setSosLoading] = useState(false)
   const [showJourney, setShowJourney] = useState(false)
+  const [lateAlerts, setLateAlerts] = useState([])
+  const [dismissedAlertIds, setDismissedAlertIds] = useState([])
 
   const isSharedJourney =
     window.location.pathname.startsWith('/shared-journey/')
 
   useEffect(() => {
-    // Public journey links do not require login.
     if (isSharedJourney) {
       setAuthLoading(false)
       return
@@ -45,6 +46,42 @@ function App() {
       subscription.unsubscribe()
     }
   }, [isSharedJourney])
+
+  useEffect(() => {
+    if (!user || isSharedJourney) {
+      setLateAlerts([])
+      return
+    }
+
+    let mounted = true
+
+    const checkLateJourneys = async () => {
+      const { data, error } = await supabase
+        .from('journeys')
+        .select('id, destination, expected_arrival, status, late_alert_sent')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .eq('late_alert_sent', false)
+        .lt('expected_arrival', new Date().toISOString())
+
+      if (error) {
+        console.error('Late journey check failed:', error)
+        return
+      }
+
+      if (mounted) {
+        setLateAlerts(data || [])
+      }
+    }
+
+    checkLateJourneys()
+    const timer = window.setInterval(checkLateJourneys, 30000)
+
+    return () => {
+      mounted = false
+      window.clearInterval(timer)
+    }
+  }, [user, isSharedJourney])
 
   const text = {
     en: {
@@ -223,7 +260,9 @@ function App() {
 
           const mapLink = `https://www.google.com/maps?q=${latitude},${longitude}`
 
-          const { data: { user } } = await supabase.auth.getUser()
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
 
           if (!user) {
             alert('Please log in again.')
@@ -250,8 +289,8 @@ function App() {
 
           const share = window.confirm(
             `Location obtained.\n\nTrusted contacts:\n` +
-            contacts.map(c => `${c.name}: ${c.phone}`).join('\n') +
-            `\n\nOpen sharing options? No message has been sent yet.`
+              contacts.map((c) => `${c.name}: ${c.phone}`).join('\n') +
+              `\n\nOpen sharing options? No message has been sent yet.`
           )
 
           if (!share) return
@@ -287,7 +326,6 @@ function App() {
     if (error) alert(error.message)
   }
 
-  // Public shared journey page: no login required.
   if (isSharedJourney) {
     return <SharedJourney />
   }
@@ -299,6 +337,10 @@ function App() {
   if (!user) {
     return <Auth onLogin={setUser} />
   }
+
+  const visibleLateAlerts = lateAlerts.filter(
+    (journey) => !dismissedAlertIds.includes(journey.id)
+  )
 
   return (
     <main className={dark ? 'app dark' : 'app'}>
@@ -333,6 +375,50 @@ function App() {
           <button onClick={handleLogout}>Logout</button>
         </div>
       </header>
+
+      {visibleLateAlerts.length > 0 && (
+        <div
+          role="alert"
+          style={{
+            background: '#fee2e2',
+            color: '#991b1b',
+            padding: '16px',
+            margin: '16px 0',
+            borderRadius: '8px',
+          }}
+        >
+          <strong>⚠️ Late Journey Alert!</strong>
+
+          {visibleLateAlerts.map((journey) => (
+            <p key={journey.id}>
+              Your journey to <strong>{journey.destination}</strong> is overdue.
+            </p>
+          ))}
+
+          <button
+            type="button"
+            onClick={() =>
+              setDismissedAlertIds((previous) => [
+                ...new Set([
+                  ...previous,
+                  ...visibleLateAlerts.map((journey) => journey.id),
+                ]),
+              ])
+            }
+            style={{
+              background: '#991b1b',
+              color: 'white',
+              padding: '8px 14px',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              marginTop: '8px',
+            }}
+          >
+            Dismiss Alert
+          </button>
+        </div>
+      )}
 
       <div className="dashboard-layout">
         <div className="dashboard-main">
