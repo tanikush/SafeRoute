@@ -1,16 +1,26 @@
 
+import AdminReports from './components/AdminReports'
 import { useEffect, useState } from 'react'
 import './App.css'
+import 'leaflet/dist/leaflet.css'
 import Auth from './Auth'
 import { supabase } from './lib/supabase'
 import TrustedContacts from './components/TrustedContacts'
 import JourneySharing from './components/JourneySharing'
 import SharedJourney from './components/SharedJourney'
+import NearbyHelp from './components/NearbyHelp'
+import ReportProblem from './components/ReportProblem'
+import CommunitySafetyMap from './components/CommunitySafetyMap'
+import SaferRoute from './components/SaferRoute'
 
 function App() {
+  const [showReport, setShowReport] = useState(false)
+  const [showSaferRoute, setShowSaferRoute] = useState(false)
   const [dark, setDark] = useState(false)
   const [language, setLanguage] = useState('en')
   const [user, setUser] = useState(null)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [adminChecked, setAdminChecked] = useState(false)
   const [authLoading, setAuthLoading] = useState(true)
   const [sosLoading, setSosLoading] = useState(false)
   const [showJourney, setShowJourney] = useState(false)
@@ -20,6 +30,7 @@ function App() {
   const isSharedJourney =
     window.location.pathname.startsWith('/shared-journey/')
 
+  // Authentication check
   useEffect(() => {
     if (isSharedJourney) {
       setAuthLoading(false)
@@ -47,6 +58,43 @@ function App() {
     }
   }, [isSharedJourney])
 
+  // Admin check
+  useEffect(() => {
+    let mounted = true
+
+    async function checkAdmin() {
+      setIsAdmin(false)
+      setAdminChecked(false)
+
+      if (!user || isSharedJourney) {
+        setAdminChecked(true)
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('app_admins')
+        .select('user_id')
+        .eq('user_id', user.id)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Admin check failed:', error.message)
+      }
+
+      if (mounted) {
+        setIsAdmin(!error && !!data)
+        setAdminChecked(true)
+      }
+    }
+
+    checkAdmin()
+
+    return () => {
+      mounted = false
+    }
+  }, [user, isSharedJourney])
+
+  // Late journey alerts
   useEffect(() => {
     if (!user || isSharedJourney) {
       setLateAlerts([])
@@ -69,9 +117,7 @@ function App() {
         return
       }
 
-      if (mounted) {
-        setLateAlerts(data || [])
-      }
+      if (mounted) setLateAlerts(data || [])
     }
 
     checkLateJourneys()
@@ -214,7 +260,7 @@ function App() {
       footer: '安全信息不代表安全保证。',
       language: '语言',
       dark: '🌙 深色',
-      light: '☀️ 浅色',
+      light: '🌙 浅色',
     },
   }
 
@@ -447,9 +493,9 @@ function App() {
               <span className="feature-icon">🧭</span>
               <h3>{t.route}</h3>
               <p>{t.routeDesc}</p>
-              <button onClick={() => showDemo(t.route)}>
-                {t.routeBtn} →
-              </button>
+              <button onClick={() => setShowSaferRoute(true)}>
+  {t.routeBtn} →
+</button>
             </article>
 
             <article className="feature help-card">
@@ -458,11 +504,9 @@ function App() {
               <p>{t.helpDesc}</p>
               <button
                 onClick={() =>
-                  window.open(
-                    'https://112.gov.in/',
-                    '_blank',
-                    'noopener,noreferrer'
-                  )
+                  document.getElementById('nearby-help')?.scrollIntoView({
+                    behavior: 'smooth',
+                  })
                 }
               >
                 {t.helpBtn} →
@@ -482,10 +526,27 @@ function App() {
               <span className="feature-icon">📝</span>
               <h3>{t.report}</h3>
               <p>{t.reportDesc}</p>
-              <button onClick={() => showDemo(t.report)}>
+              <button onClick={() => setShowReport(true)}>
                 {t.reportBtn} →
               </button>
             </article>
+          </section>
+           
+          {showSaferRoute && (
+  <SaferRoute onClose={() => setShowSaferRoute(false)} />
+)}
+
+          {showReport && (
+            <ReportProblem onClose={() => setShowReport(false)} />
+          )}
+
+          <CommunitySafetyMap />
+
+          {/* Only admins can see the report review dashboard */}
+          {adminChecked && isAdmin && <AdminReports />}
+
+          <section id="nearby-help" className="journey-container">
+            <NearbyHelp />
           </section>
 
           {showJourney && (
